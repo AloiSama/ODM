@@ -1,6 +1,15 @@
 set(_proj_name gdal)
 set(_SB_BINARY_DIR "${SB_BINARY_DIR}/${_proj_name}")
 
+if (WIN32)
+  set(GDAL_PYTHON_ARGS -DPython3_EXECUTABLE=${PYTHON_EXE_PATH}
+                        -DPython3_ROOT_DIR=${PYTHON_HOME}
+                        -DPython3_NumPy_INCLUDE_DIRS=${PYTHON_HOME}/Lib/site-packages/numpy/_core/include)
+else()
+  set(GDAL_PYTHON_ARGS -DPython3_EXECUTABLE=${PYTHON_EXE_PATH}
+                        -DPython3_NumPy_INCLUDE_DIRS=${PYTHON_HOME}/lib/python3.12/site-packages/numpy/_core/include)
+endif()
+
 ExternalProject_Add(${_proj_name}
   PREFIX            ${_SB_BINARY_DIR}
   TMP_DIR           ${_SB_BINARY_DIR}/tmp
@@ -19,6 +28,7 @@ ExternalProject_Add(${_proj_name}
     -DGDAL_PYTHON_INSTALL_PREFIX=${SB_INSTALL_DIR}
     -DBUILD_PYTHON_BINDINGS=ON
     ${WIN32_CMAKE_ARGS}
+    ${GDAL_PYTHON_ARGS}
   #--Build step-----------------
   BINARY_DIR        ${_SB_BINARY_DIR}
   #--Install step---------------
