@@ -49,7 +49,7 @@ def build_entwine(input_point_cloud_files, tmpdir, output_path, max_concurrency=
         'reproject': (" -r %s " % reproject) if reproject is not None else "" 
     }
 
-    system.run('entwine build --threads {threads} --tmp "{tmpdir}" {all_inputs} -o "{outputdir}" {reproject}'.format(**kwargs))
+    system.run('entwine build --threads {threads} --tmp "{tmpdir}" {all_inputs} -o "{outputdir}" {reproject} --progress 1'.format(**kwargs))
 
 def build_untwine(input_point_cloud_files, tmpdir, output_path, max_concurrency=8, rerun=False):
     kwargs = {

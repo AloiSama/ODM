@@ -126,7 +126,8 @@ class ODMMvsTexStage(types.ODM_Stage):
                         '{nadirMode} '
                         '{labelingFile} '
                         '{numThreads} '
-                        '{maxTextureSize} '.format(**kwargs))
+                        '{maxTextureSize} '
+                        '--write_timings '.format(**kwargs))
 
                 if r['primary'] and (not r['nadir'] or args.skip_3dmodel):
                     # GlTF?

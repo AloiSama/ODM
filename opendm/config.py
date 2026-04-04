@@ -915,8 +915,15 @@ def config(argv=None, parser=None):
                           'If the images have been postprocessed and are already aligned, use this option. '
                           'Default: %(default)s'))
 
+    parser.add_argument('--verbose',
+                    action=StoreTrue,
+                    nargs=0,
+                    default=False,
+                    help='Print raw tool output instead of progress display. '
+                         'Default: %(default)s')
+
     args, unknown = parser.parse_known_args(argv)
-    DEPRECATED = ["--verbose", "--debug", "--time", "--resize-to", "--depthmap-resolution", "--pc-geometric", "--texturing-data-term", "--texturing-outlier-removal-type", "--texturing-tone-mapping", "--texturing-skip-local-seam-leveling"]
+    DEPRECATED = ["--debug", "--time", "--resize-to", "--depthmap-resolution", "--pc-geometric", "--texturing-data-term", "--texturing-outlier-removal-type", "--texturing-tone-mapping", "--texturing-skip-local-seam-leveling"]
     unknown_e = [p for p in unknown if p not in DEPRECATED]
     if len(unknown_e) > 0:
         raise parser.error("unrecognized arguments: %s" % " ".join(unknown_e))

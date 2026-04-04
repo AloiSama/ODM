@@ -20,6 +20,9 @@ from stages.splitmerge import ODMSplitStage, ODMMergeStage
 from stages.odm_report import ODMReport
 from stages.odm_postprocess import ODMPostProcess
 
+from opendm.display import ProgressDisplay
+import opendm.display as display_module
+
 
 class ODMApp:
     def __init__(self, args):
@@ -76,11 +79,21 @@ class ODMApp:
             .connect(orthophoto) \
             .connect(report) \
             .connect(postprocess)
-                
+
+        # Initialize progress display
+        stage_list = self.first_stage.collect_stages()
+        display_module.display = ProgressDisplay(
+            stages_list=stage_list,
+            version=log.odm_version(),
+            is_verbose=getattr(args, 'verbose', False),
+        )
+
     def execute(self):
         try:
             self.first_stage.run()
             log.logger.log_json_success()
+            if display_module.display is not None:
+                display_module.display.show_summary()
             return 0
         except system.SubprocessException as e:
             print("")

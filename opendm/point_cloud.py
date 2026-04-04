@@ -105,6 +105,8 @@ def filter(input_point_cloud, output_point_cloud, output_stats, standard_deviati
             f.write(as_geojson(boundary))
         args.append('--boundary "%s"' % boundary_json_file)
 
+    args.append('--verbose yes')
+
     system.run('"%s" %s' % (context.fpcfilter_path, " ".join(args)))
 
     if not os.path.exists(output_point_cloud):

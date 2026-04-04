@@ -75,7 +75,7 @@ class ODMOpenMVSStage(types.ODM_Stage):
                 "--sub-resolution-levels %s" % subres_levels,
                 "--archive-type 3",
                 '-w "%s"' % depthmaps_dir, 
-                "-v 0"
+                "-v 1"
             ]
 
             gpu_config = []
@@ -135,7 +135,7 @@ class ODMOpenMVSStage(types.ODM_Stage):
                     "--sub-scene-area 660000", # 8000
                     "--max-threads %s" % args.max_concurrency,
                     '-w "%s"' % depthmaps_dir, 
-                    "-v 0",
+                    "-v 1",
                 ]
                 system.run('"%s" "%s" %s' % (context.omvs_densify_path, 
                                         openmvs_scene_file,
@@ -171,7 +171,7 @@ class ODMOpenMVSStage(types.ODM_Stage):
                             '--postprocess-dmaps 0',
                             '--geometric-iters 0',
                             '-w "%s"' % depthmaps_dir,
-                            '-v 0',
+                            '-v 1',
                         ]
 
                         try:
@@ -185,7 +185,7 @@ class ODMOpenMVSStage(types.ODM_Stage):
                         else:
                             # Filter
                             if args.pc_filter > 0:
-                                system.run('"%s" "%s" --filter-point-cloud %s -v 0 --archive-type 3 %s' % (context.omvs_densify_path, scene_dense_mvs, filter_point_th, ' '.join(gpu_config)))
+                                system.run('"%s" "%s" --filter-point-cloud %s -v 1 --archive-type 3 %s' % (context.omvs_densify_path, scene_dense_mvs, filter_point_th, ' '.join(gpu_config)))
                             else:
                                 # Just rename
                                 log.ODM_INFO("Skipped filtering, %s --> %s" % (scene_ply_unfiltered, scene_ply))
@@ -220,7 +220,7 @@ class ODMOpenMVSStage(types.ODM_Stage):
                         config = [
                             "--filter-point-cloud %s" % filter_point_th,
                             '-i "%s"' % scene_dense,
-                            "-v 0"
+                            "-v 1"
                         ]
                         try:
                             system.run('"%s" %s' % (context.omvs_densify_path, ' '.join(config + gpu_config + extra_config)))

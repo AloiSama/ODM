@@ -300,6 +300,10 @@ class ODMLoadDatasetStage(types.ODM_Stage):
         log.ODM_INFO('Found %s usable images' % len(photos))
         log.logger.log_json_images(len(photos))
 
+        from opendm.display import display
+        if display is not None:
+            display.set_image_count(len(photos))
+
         # Create reconstruction object
         reconstruction = types.ODM_Reconstruction(photos)
         

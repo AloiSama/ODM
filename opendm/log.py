@@ -51,8 +51,13 @@ class ODMLogger:
     def log(self, startc, msg, level_name):
         level = ("[" + level_name + "]").ljust(9)
         with lock:
-            print("%s%s %s%s" % (startc, level, msg, ENDC))
-            sys.stdout.flush()
+            from opendm.display import display
+            if display is not None and not display.is_verbose and display.is_tty:
+                display.log_message(level_name, msg)
+            else:
+                print("%s%s %s%s" % (startc, level, msg, ENDC))
+                sys.stdout.flush()
+
             if self.json is not None:
                 self.json['stages'][-1]['messages'].append({
                     'message': msg,

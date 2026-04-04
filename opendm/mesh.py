@@ -172,7 +172,8 @@ def screened_poisson_reconstruction(inPointCloud, outMesh, depth = 8, samples = 
                     '--samplesPerNode {samples} '
                     '--threads {threads} '
                     '--bType 2 '
-                    '--linearFit '.format(**poissonReconArgs))
+                    '--linearFit '
+                    '--verbose --performance '.format(**poissonReconArgs))
         except Exception as e:
             log.ODM_WARNING(str(e))
             

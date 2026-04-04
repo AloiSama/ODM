@@ -435,12 +435,23 @@ class ODM_Stage:
                      (self.args.rerun_all) or \
                      (self.args.rerun_from is not None and self.name in self.args.rerun_from)
     
+    def collect_stages(self):
+        """Return ordered list of stage names from this stage onward."""
+        stages = [self.name]
+        if self.next_stage:
+            stages.extend(self.next_stage.collect_stages())
+        return stages
+
     def run(self, outputs = {}):
         start_time = system.now_raw()
         log.logger.log_json_stage_run(self.name, start_time)
 
+        from opendm.display import display
+        if display is not None:
+            display.stage_start(self.name)
+
         log.ODM_INFO('Running %s stage' % self.name)
-        
+
         self.process(self.args, outputs)
 
         # The tree variable should always be populated at this point
@@ -451,6 +462,9 @@ class ODM_Stage:
             system.benchmark(start_time, outputs['tree'].benchmarking, self.name)
         except Exception as e:
             log.ODM_WARNING("Cannot write benchmark file: %s" % str(e))
+
+        if display is not None:
+            display.stage_end(self.name)
 
         log.ODM_INFO('Finished %s stage' % self.name)
         self.update_progress_end()
@@ -481,8 +495,11 @@ class ODM_Stage:
 
     def update_progress(self, progress):
         progress = max(0.0, min(100.0, progress))
-        progressbc.send_update(self.previous_stages_progress() + 
+        progressbc.send_update(self.previous_stages_progress() +
                               (self.delta_progress() / 100.0) * float(progress))
+        from opendm.display import display
+        if display is not None:
+            display.update_progress(self.name, progress)
 
     def last_stage(self):
         if self.next_stage:
