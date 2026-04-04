@@ -131,6 +131,13 @@ installreqs() {
 
     # edt requires numpy to build
     venv/bin/pip install numpy==2.3.2
+
+    # Upgrade system numpy to 2.x so GDAL Python bindings (_gdal_array.so)
+    # are compiled against NumPy 2.x headers. The apt python3-numpy package
+    # installs NumPy 1.26.x, and GDAL's SWIG/setuptools build picks up those
+    # headers, making the resulting extension ABI-incompatible with the venv's
+    # NumPy 2.x at runtime.
+    sudo pip3 install --break-system-packages numpy==2.3.2
     set +e
 }
 
@@ -138,7 +145,7 @@ installpython() {
     echo "Installing Python requirements with compiled GDAL"
     cd /code
     export GDAL_CONFIG=${RUNPATH}/SuperBuild/install/bin/gdal-config
-    
+
     set -e
     venv/bin/pip install -r requirements.txt --ignore-installed
     set +e
