@@ -137,7 +137,7 @@ installreqs() {
     # installs NumPy 1.26.x, and GDAL's SWIG/setuptools build picks up those
     # headers, making the resulting extension ABI-incompatible with the venv's
     # NumPy 2.x at runtime.
-    sudo pip3 install --break-system-packages numpy==2.3.2
+    sudo pip3 install --break-system-packages --ignore-installed numpy==2.3.2
     set +e
 }
 
