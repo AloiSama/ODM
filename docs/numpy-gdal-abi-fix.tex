@@ -1,0 +1,253 @@
+\documentclass{article}
+\usepackage{verbatim}
+\usepackage{hyperref}
+\usepackage{amssymb}
+\usepackage[margin=1.2in]{geometry}
+
+\title{On the Reconciliation of NumPy Headers\\
+  in the Construction of GDAL Python Bindings\\[6pt]
+  \large A Literate Account of a Build-Order Defect\\
+  in OpenDroneMap}
+
+\author{With apologies to D.~E.~Knuth}
+\date{April 2026}
+
+\begin{document}
+\maketitle
+
+\section{The Problem, Stated Plainly}
+
+A user of OpenDroneMap version 3.6.0, upon processing a set of aerial
+photographs, encounters the following fatal message during the report
+generation stage:
+
+\begin{verbatim}
+  ImportError:
+  A module that was compiled using NumPy 1.x cannot be run in
+  NumPy 2.3.2 as it may crash.
+\end{verbatim}
+
+\noindent The error arises deep within the GDAL library, at the moment when
+the hillshade merge script attempts to read raster data into a NumPy
+array:
+
+\begin{verbatim}
+  File "opendm/tiles/hsv_merge.py", line 198
+    rScanline = rBand.ReadAsArray(0, i, ...)
+  File "osgeo/gdal.py", line 8910, in ReadAsArray
+    from osgeo import gdal_array
+  File "osgeo/gdal_array.py", line 10
+    from . import _gdal_array
+  ImportError: numpy.core.multiarray failed to import
+\end{verbatim}
+
+\noindent The processing pipeline then crashes entirely, presenting to the
+bewildered user a misleading error about ``strange values in the
+reconstruction.''  The photographs are fine; the reconstruction is
+fine; the trouble lies elsewhere.
+
+\section{The Architecture of the Build}
+
+To understand the defect, we must first understand how ODM assembles
+its dependencies.  The build proceeds in three phases, orchestrated by
+\texttt{configure.sh}:
+
+\medskip
+\noindent\textbf{Phase 1: \texttt{installreqs}.} System packages are
+installed via \texttt{apt-get}, reading the dependency lists from
+\texttt{snapcraft24.yaml}.  Among the GDAL build dependencies we find:
+
+\begin{verbatim}
+  gdal:
+    build-packages:
+      - python3-numpy    # <-- Ubuntu 24.04 ships NumPy 1.26.4
+      - python3-dev
+      - swig
+      ...
+\end{verbatim}
+
+\noindent A Python virtual environment is then created, and NumPy 2.3.2
+is installed into it:
+
+\begin{verbatim}
+  python3 -m venv venv --system-site-packages
+  venv/bin/pip install numpy==2.3.2
+\end{verbatim}
+
+\noindent We now have \emph{two} NumPy installations on the system: version
+1.26.4 at \texttt{/usr/lib/python3/dist-packages/numpy/}, installed by
+the Debian package manager, and version 2.3.2 at
+\texttt{/code/venv/lib/python3.12/site-packages/numpy/}, installed by
+pip.
+
+\medskip
+\noindent\textbf{Phase 2: SuperBuild.}  CMake compiles GDAL from source
+with \texttt{-DBUILD\_PYTHON\_BINDINGS=ON}.  GDAL's build system uses
+SWIG to generate Python wrappers, then invokes \texttt{setuptools} to
+compile the C extension module \texttt{\_gdal\_array.so}.  The
+\texttt{setuptools} build calls \texttt{numpy.get\_include()} to
+locate the NumPy C headers.
+
+Here is the crux of the matter: \emph{which} NumPy does
+\texttt{setuptools} find?
+
+Despite our CMake arguments pointing to the virtual environment's
+Python, GDAL's internal build machinery discovers the \emph{system}
+Python's NumPy~1.26.4.  The C extension \texttt{\_gdal\_array.so} is
+thus compiled against NumPy~1.x ABI headers and installed to:
+
+\begin{verbatim}
+  /code/SuperBuild/install/local/lib/python3.12/
+    dist-packages/osgeo/_gdal_array.cpython-312-...-linux-gnu.so
+\end{verbatim}
+
+\medskip
+\noindent\textbf{Phase 3: \texttt{installpython}.}  The pip
+requirements are installed into the virtual environment, including
+\texttt{numpy==2.3.2}.  At runtime, the \texttt{PYTHONPATH} places the
+SuperBuild directory (containing the NumPy~1.x-compiled
+\texttt{\_gdal\_array.so}) \emph{before} the virtual environment's
+\texttt{site-packages}.  Thus when any code calls
+\texttt{ReadAsArray()}, the import of \texttt{\_gdal\_array} loads a
+binary incompatible with the running NumPy, and the process crashes.
+
+\section{Why the Na\"{\i}ve CMake Fix Was Insufficient}
+
+Our first attempt was to pass explicit Python and NumPy paths to
+GDAL's CMake configuration, following the pattern already established
+by OpenCV and PDALPython in their respective \texttt{External-*.cmake}
+files:
+
+\begin{verbatim}
+  if (WIN32)
+    set(GDAL_PYTHON_ARGS
+      -DPython3_EXECUTABLE=${PYTHON_EXE_PATH}
+      -DPython3_ROOT_DIR=${PYTHON_HOME}
+      -DPython3_NumPy_INCLUDE_DIRS=...numpy/_core/include)
+  else()
+    set(GDAL_PYTHON_ARGS
+      -DPython3_EXECUTABLE=${PYTHON_EXE_PATH}
+      -DPython3_NumPy_INCLUDE_DIRS=...numpy/_core/include)
+  endif()
+\end{verbatim}
+
+\noindent This is good practice and we retain it in our final patch, but it
+proved insufficient.  The CMake \texttt{FindPython3} module honors
+\texttt{Python3\_EXECUTABLE} during the \emph{configure} step, but GDAL's
+SWIG binding compilation occurs later via \texttt{setuptools}, which
+performs its own NumPy discovery by importing numpy in whatever Python
+it finds.  The system NumPy~1.x, sitting at a well-known path, wins
+the race.
+
+\section{The Effective Fix}
+
+The solution is disarmingly simple: before the SuperBuild runs, ensure
+that the system NumPy is upgraded to the same major version we intend
+to use at runtime.  In \texttt{configure.sh}, immediately after the
+virtual environment's NumPy is installed:
+
+\begin{verbatim}
+  # edt requires numpy to build
+  venv/bin/pip install numpy==2.3.2
+
+  # Upgrade system numpy to 2.x so GDAL Python bindings
+  # (_gdal_array.so) are compiled against NumPy 2.x headers.
+  sudo pip3 install --break-system-packages \
+                    --ignore-installed numpy==2.3.2
+\end{verbatim}
+
+\noindent Two flags deserve explanation:
+
+\begin{itemize}
+  \item \texttt{-{}-break-system-packages} permits pip to install into
+    the system Python's \texttt{dist-packages}, which is normally
+    protected on modern Debian-derived systems (PEP~668).
+
+  \item \texttt{-{}-ignore-installed} is necessary because the
+    Debian-packaged NumPy~1.26.4 has no pip \texttt{RECORD} file; without
+    this flag, pip attempts to uninstall the existing version, fails to
+    find the manifest, and aborts.
+\end{itemize}
+
+\noindent After this line executes, both the system Python and the virtual
+environment agree: NumPy is version~2.3.2.  When GDAL's
+\texttt{setuptools} build calls \texttt{numpy.get\_include()}, it
+receives the NumPy~2.x header path regardless of which Python
+interpreter it uses.  The resulting \texttt{\_gdal\_array.so} is
+ABI-compatible with the runtime NumPy, and the import succeeds.
+
+\section{A Defensive Measure}
+
+Even with the root cause eliminated, we observed a secondary defect in
+the error cascade.  When the hillshade merge script failed, the
+function \texttt{generate\_colored\_hillshade()} returned \texttt{None}
+for the output path.  The calling code in \texttt{odm\_report.py}
+passed this \texttt{None} directly to \texttt{gdal\_translate} as a
+filename:
+
+\begin{verbatim}
+  gdal_translate -outsize 1400 0 -of png "None" ...
+  ERROR 4: None: No such file or directory
+\end{verbatim}
+
+\noindent This converted a recoverable warning (no hillshade preview in
+the PDF report) into a fatal pipeline crash.  We add a guard:
+
+\begin{verbatim}
+  colored_dem, hillshade_dem, colored_hillshade_dem = \
+      generate_colored_hillshade(resized_dem_file)
+
+  if colored_hillshade_dem is not None \
+          and os.path.isfile(colored_hillshade_dem):
+      system.run("gdal_translate ...")
+  else:
+      log.ODM_WARNING(
+        "Colored hillshade not generated, "
+        "skipping DEM preview")
+
+  for f in [resized_dem_file, colored_dem,
+            hillshade_dem, colored_hillshade_dem]:
+      if f is not None and os.path.isfile(f):
+          os.remove(f)
+\end{verbatim}
+
+\noindent Now, should any future defect prevent hillshade generation, the
+pipeline continues gracefully.  The PDF report will lack a DEM
+preview image, but the user's hours of photogrammetric processing
+will not be lost.
+
+\section{Summary of Changes}
+
+Three files were modified:
+
+\begin{enumerate}
+  \item \textbf{\texttt{configure.sh}} --- Upgrade system NumPy to 2.3.2
+    before the SuperBuild, so GDAL's \texttt{\_gdal\_array.so} compiles
+    against NumPy~2.x headers.  \emph{This is the essential fix.}
+
+  \item \textbf{\texttt{SuperBuild/cmake/External-GDAL.cmake}} --- Pass
+    \texttt{Python3\_EXECUTABLE} and
+    \texttt{Python3\_NumPy\_INCLUDE\_DIRS} to GDAL's CMake, matching the
+    convention used by OpenCV and PDALPython.  \emph{Belt to the
+    suspenders.}
+
+  \item \textbf{\texttt{stages/odm\_report.py}} --- Check for
+    \texttt{None} before invoking \texttt{gdal\_translate} on the
+    hillshade output.  \emph{A guard against future misfortune.}
+\end{enumerate}
+
+\section{Moral}
+
+When a build system has two installations of the same library---one
+placed by the system package manager, one by the language package
+manager---the build will invariably find the wrong one.  The only
+reliable remedy is to ensure they agree.
+
+\bigskip
+\hfill\textit{``Beware of bugs in the above code;}
+
+\hfill\textit{I have only proved it correct, not tried it.''}
+
+\hfill--- D.~E.~Knuth (1977)
+
+\end{document}
